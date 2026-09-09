@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlirtX Admin</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(160deg,#18040d,#34091d 55%,#16051f);color:#fff;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(480px,100%);background:#ffffff0d;border:1px solid #ffffff1f;border-radius:24px;padding:24px;box-shadow:0 25px 70px #0008;backdrop-filter:blur(14px)}.logo{font-size:31px;font-weight:900;letter-spacing:-1px;margin-bottom:6px}.logo span{color:#ff3c8e}.muted{color:#cdb7c4;font-size:13px;line-height:1.5;margin-bottom:22px}label{display:block;font-size:12px;font-weight:800;margin:14px 0 7px;color:#f4dce8}input{width:100%;border:1px solid #ffffff24;background:#09050a;color:#fff;padding:14px 15px;border-radius:13px;outline:none;font-size:14px}input:focus{border-color:#ff3c8e}input[type=file]{padding:11px}button{width:100%;border:0;border-radius:13px;padding:14px 15px;margin-top:14px;font-weight:900;font-size:14px;cursor:pointer;background:linear-gradient(90deg,#ff2f7d,#bd43ff);color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.secondary{background:#ffffff12;border:1px solid #ffffff22}.msg{min-height:20px;margin-top:12px;font-size:13px;font-weight:700;line-height:1.45}.ok{color:#5dff8b}.bad{color:#ff7b92}.hidden{display:none}.progress{height:9px;background:#ffffff12;border-radius:999px;overflow:hidden;margin-top:14px}.bar{height:100%;width:0;background:linear-gradient(90deg,#ff2f7d,#bd43ff);transition:width .25s}.link{word-break:break-all;color:#ff9dca;font-size:12px;margin-top:10px}.note{display:block;color:#a98c9e;margin-top:14px;line-height:1.45;font-size:12px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Flirt<span>X</span> Admin</div>
+  <div class="muted">Upload a new APK here. It will be published to GitHub automatically, and the website download button will always point to the newest release.</div>
+
+  <div id="loginBox">
+    <label>Admin password</label>
+    <input id="password" type="password" placeholder="Enter admin password" autocomplete="current-password">
+    <button id="loginBtn">LOGIN</button>
+    <div id="loginMsg" class="msg"></div>
+  </div>
+
+  <div id="panel" class="hidden">
+    <label>Version (optional)</label>
+    <input id="version" type="text" placeholder="Example: v1.4 — leave blank for automatic version">
+    <label>Select APK</label>
+    <input id="apk" type="file" accept=".apk,application/vnd.android.package-archive">
+    <button id="uploadBtn">UPLOAD APK & PUBLISH</button>
+    <div class="progress"><div id="bar" class="bar"></div></div>
+    <div id="uploadMsg" class="msg"></div>
+    <div id="resultLink" class="link"></div>
+    <button id="logoutBtn" class="secondary">LOG OUT</button>
+    <span class="note">Your GitHub token is stored only as a Cloudflare secret. It is never placed in this page or sent to visitors.</span>
+  </div>
+</div>
+<script>
+const loginBox=document.getElementById('loginBox');
+const panel=document.getElementById('panel');
+const password=document.getElementById('password');
+const loginMsg=document.getElementById('loginMsg');
+const uploadMsg=document.getElementById('uploadMsg');
+const uploadBtn=document.getElementById('uploadBtn');
+const bar=document.getElementById('bar');
+let adminPassword='';
+
+async function login(){
+  loginMsg.textContent='Checking…'; loginMsg.className='msg';
+  const r=await fetch('/api/login',{method:'POST',headers:{'x-admin-password':password.value}});
+  if(r.ok){adminPassword=password.value;password.value='';loginBox.classList.add('hidden');panel.classList.remove('hidden');loginMsg.textContent='';}
+  else{loginMsg.textContent='Incorrect password.';loginMsg.className='msg bad';}
+}
+document.getElementById('loginBtn').onclick=login;
+password.addEventListener('keydown',e=>{if(e.key==='Enter')login()});
+
+document.getElementById('logoutBtn').onclick=()=>{adminPassword='';panel.classList.add('hidden');loginBox.classList.remove('hidden');};
+
+uploadBtn.onclick=()=>{
+  const file=document.getElementById('apk').files[0];
+  if(!file){uploadMsg.textContent='Choose an APK first.';uploadMsg.className='msg bad';return;}
+  if(!file.name.toLowerCase().endsWith('.apk')){uploadMsg.textContent='Please select an .apk file.';uploadMsg.className='msg bad';return;}
+  const version=document.getElementById('version').value.trim();
+  uploadBtn.disabled=true;bar.style.width='0%';uploadMsg.textContent='Uploading APK…';uploadMsg.className='msg';document.getElementById('resultLink').textContent='';
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/upload');
+  xhr.setRequestHeader('x-admin-password',adminPassword);
+  if(version) xhr.setRequestHeader('x-version',version);
+  xhr.setRequestHeader('content-type','application/vnd.android.package-archive');
+  xhr.upload.onprogress=e=>{if(e.lengthComputable)bar.style.width=Math.round((e.loaded/e.total)*100)+'%';};
+  xhr.onload=()=>{
+    uploadBtn.disabled=false;
+    let data={};try{data=JSON.parse(xhr.responseText)}catch(e){}
+    if(xhr.status>=200&&xhr.status<300){bar.style.width='100%';uploadMsg.textContent='Published successfully. Your website now downloads this latest APK.';uploadMsg.className='msg ok';document.getElementById('resultLink').textContent=data.download_url||'';document.getElementById('apk').value='';}
+    else{uploadMsg.textContent=data.error||('Upload failed ('+xhr.status+').');uploadMsg.className='msg bad';}
+  };
+  xhr.onerror=()=>{uploadBtn.disabled=false;uploadMsg.textContent='Network error while uploading.';uploadMsg.className='msg bad';};
+  xhr.send(file);
+};
+</script>
+</body>
+</html>
